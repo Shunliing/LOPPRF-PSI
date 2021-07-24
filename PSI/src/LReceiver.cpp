@@ -67,6 +67,7 @@ namespace scuPSI {
 		auto binReceiverSizeInBytes = (receiverSize + 7) / 8;
 		auto shift = (1 << logHeight) - 1;
 		auto widthBucket1 = sizeof(block) / locationInBytes;
+		u8* recvBuff;
 		
 		u64 totalSentData, totalRecvData, totalData;
 		
@@ -223,41 +224,7 @@ namespace scuPSI {
 					// std::cout << "Receiver matrix sent and transposed hash input computed\n";
 					// timer.setTimePoint("Receiver matrix sent and transposed hash input computed");	
 					
-				}
-			}
-
-			for (u64 i = 0; i < t; i++) {
-				sentData[i] = chl.getTotalDataSent();
-				recvData[i] = chl.getTotalDataRecv();
-			}
-		};
-
-		//+-------------- 多线程 ----------------+
-		std::vector<std::thread> thrds(chls.size());
-		for (u64 i = 0; i < thrds.size(); ++i)
-		{
-			thrds[i] = std::thread([=] {
-				routine(i);
-				});
-		}
-
-		for (auto& thrd : thrds)
-			thrd.join();
-			
-		//------------------- 多线程2:计算PSI ----------------------	
-		auto computingPsi = [&](u64 t)
-		{
-			auto& chl = chls[t];
-			u64 binStartIdx = balance.mNumBins * t / numThreads;
-			u64 tempBinEndIdx = (balance.mNumBins * (t + 1) / numThreads);
-			u64 binEndIdx = std::min(tempBinEndIdx, balance.mNumBins);
-
-			for (u64 i = binStartIdx; i < binEndIdx; i += stepSize)
-			{
-				/////////////////// Compute hash outputs ///////////////////////////
-				
-				for (u64 k = 0; k < curStepSize; ++k)
-				{
+					/////////////////// Compute hash outputs ///////////////////////////
 					RandomOracle H(hashLengthInBytes);
 					u8 hashOutput[sizeof(block)];
 					std::unordered_map<u64, std::vector<std::pair<block, u32>>> allHashes;
@@ -287,54 +254,89 @@ namespace scuPSI {
 							allHashes[*(u64*)hashOutput].push_back(std::make_pair(*(block*)hashOutput, j));
 						}
 					}
-
 					// std::cout << "Receiver hash outputs computed\n";
 					// timer.setTimePoint("Receiver hash outputs computed");
+					
+					
+					// u8* recvBuff;//u8* recvBuff = new u8[bucket2 * hashLengthInBytes],移除大小限制，并在线程外的公共区域定义
 
-					///////////////// Receive hash outputs from sender and compute PSI ///////////////////
-
-					u8* recvBuff;//u8* recvBuff = new u8[bucket2 * hashLengthInBytes]
-
-					for (auto low = 0; low < senderSize; low += bucket2) {
-						auto up = low + bucket2 < senderSize ? low + bucket2 : senderSize;
-						std::cout<< "Receiver:ch.recv(recvBuff, (up - low) * hashLengthInBytes);(322)" << std::endl; 
-						chl.recv(recvBuff, (up - low) * hashLengthInBytes);
-
-						for (auto idx = 0; idx < up - low; ++idx) {
-							u64 mapIdx = *(u64*)(recvBuff + idx * hashLengthInBytes);
-
-							auto found = allHashes.find(mapIdx);
-							if (found == allHashes.end()) continue;
-
-							for (auto i = 0; i < found->second.size(); ++i) {
-								if (memcmp(&(found->second[i].first), recvBuff + idx * hashLengthInBytes, hashLengthInBytes) == 0) {
-									++binPsi[i + k];
-									break;
-								}
-							}
-						}
-					}
-
-					/*if (psi == 100) {
-						std::cout << "Receiver intersection computed - correct!\n";
-					}
-					timer.setTimePoint("Receiver intersection computed");
-
-					std::cout << timer;*/
+					
+					
+					
 				}
-
-				
-
-				//////////////// Output communication /////////////////
-
-				/*u64 sentData = ch.getTotalDataSent();
-				u64 recvData = ch.getTotalDataRecv();
-				u64 totalData = sentData + recvData;*/
-
-				/*std::cout << "Receiver sent communication: " << sentData / std::pow(2.0, 20) << " MB\n";
-				std::cout << "Receiver received communication: " << recvData / std::pow(2.0, 20) << " MB\n";
-				std::cout << "Receiver total communication: " << totalData / std::pow(2.0, 20) << " MB\n";*/
 			}
+
+			for (u64 i = 0; i < t; i++) {
+				sentData[i] = chl.getTotalDataSent();
+				recvData[i] = chl.getTotalDataRecv();
+			}
+		};
+
+		//+-------------- 多线程 ----------------+
+		std::vector<std::thread> thrds(chls.size());
+		for (u64 i = 0; i < thrds.size(); ++i)
+		{
+			thrds[i] = std::thread([=] {
+				routine(i);
+				});
+		}
+
+		for (auto& thrd : thrds)
+			thrd.join();
+			
+		//++++++++++++++++++++++++++++ 多线程2:计算PSI ++++++++++++++++++++++++++	
+		auto computingPsi = [&](u64 t)
+		{
+			///////////////// Receive hash outputs from sender and compute PSI ///////////////////
+			auto& chl = chls[t];
+			chl.recv(recvBuff);
+			
+			for (auto idx = 0; idx < senderSize * 2; idx++) 
+			{
+				// todo:加入多线程
+				// 计算PSI
+				u64 mapIdx = *(u64*)(recvBuff + idx * hashLengthInBytes);//取前64位
+
+				//查找1：对比前64位
+				auto found = allHashes.find(mapIdx);
+				if (found == allHashes.end()) continue;
+
+				//查找2：对比所有位
+				for (auto i = 0; i < found->second.size(); ++i) 
+				{
+					if (memcmp(&(found->second[i].first), recvBuff + idx * hashLengthInBytes, hashLengthInBytes) == 0) 
+					{
+						++binPsi[i + k];
+						break;
+					}
+				}
+			}
+			
+			//  在Bin中执行元素比较时会用到
+			// u64 binStartIdx = balance.mNumBins * t / numThreads;
+			// u64 tempBinEndIdx = (balance.mNumBins * (t + 1) / numThreads);
+			// u64 binEndIdx = std::min(tempBinEndIdx, balance.mNumBins);
+			//
+			// for (u64 i = binStartIdx; i < binEndIdx; i += stepSize)
+			// {
+			//	auto curStepSize = std::min(stepSize, binEndIdx - i);
+			//	for (u64 k = 0; k < curStepSize; ++k)
+			//	{
+			//		/*if (psi == 100) {
+			//			std::cout << "Receiver intersection computed - correct!\n";
+			//		}
+			//		timer.setTimePoint("Receiver intersection computed");
+			//		std::cout << timer;*/
+			//	}
+			//
+			//	//////////////// Output communication /////////////////
+			//	/*u64 sentData = ch.getTotalDataSent();
+			//	u64 recvData = ch.getTotalDataRecv();
+			//	u64 totalData = sentData + recvData;*/
+			//	/*std::cout << "Receiver sent communication: " << sentData / std::pow(2.0, 20) << " MB\n";
+			//	std::cout << "Receiver received communication: " << recvData / std::pow(2.0, 20) << " MB\n";
+			//	std::cout << "Receiver total communication: " << totalData / std::pow(2.0, 20) << " MB\n";*/
+			//}
 		};
 		
 		//+------------ 多线程等待 --------------+
@@ -348,7 +350,7 @@ namespace scuPSI {
 		for (auto& thrd : thrds)
 			thrd.join();
 			
-		//+--------- 验证结果是否正确 ---------+
+		//++++++++++++++++++++++++++++++ 验证结果是否正确 +++++++++++++++++++++++++++++++++
 		for (u64 i = 0; i < balance.mNumBins; i++) {
 			psiTotal += binPsi[i];
 		}

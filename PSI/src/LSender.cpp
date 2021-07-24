@@ -25,7 +25,7 @@ namespace scuPSI {
 		////std::cout << "Sender:base OT finished\n";
 		//timer.setTimePoint("Sender base OT finished");
 
-		//-----------------参考SpOT实现------------------------
+		//++++++++++++++++++++++++++++++ 基OT与OT扩展(SpOT) ++++++++++++++++++++++++++++++++
 		std::vector<std::array<block, 2>> baseOtSend(128);
 		NaorPinkas baseOTs;
 		baseOTs.send(baseOtSend, prng, chls[0], chls.size());
@@ -41,16 +41,17 @@ namespace scuPSI {
 
 		//////////////// 哈希算法 并行 ///////////////////////
 		//itemsToBins(chls, commonSeed, senderSet, senderSize, width, hashLengthInBytes, otMessages, otChoices);
-		u64 numThreads(chls.size());
-		const bool isMultiThreaded = numThreads > 1;
+		
 
-		//-------简单哈希：将元素映射到Bin中-------
+		//++++++++++++++++++++++++++ 简单哈希：将元素映射到Bin中 +++++++++++++++++++++++++++++
 		simple.init(senderSize, maxBinSize, recvNumDummies);
 		simple.insertItems(senderSet);
 		std::cout << "Sender:simple binning finished" << std::endl;
 		timer.setTimePoint("Sender simple binning finished");
 
-		//-----------多线程1：OPPRF矩阵-----------
+		//++++++++++++++++++++++++++++++ 多线程1：计算OPPRF输出 ++++++++++++++++++++++++++++++
+		u64 numThreads(chls.size());
+		const bool isMultiThreaded = numThreads > 1;
 		u64 height = 128;
 		u64 logHeight = 7;
 
@@ -66,6 +67,8 @@ namespace scuPSI {
 		PRNG commonPrng(commonSeed);
 		block commonKey;
 		AES commonAes;
+		u8* sentBuff;
+		u8* tmpSentBuff = sentBuff;
 
 		auto routine = [&](u64 t)
 		{
@@ -162,7 +165,6 @@ namespace scuPSI {
 						}
 
 						//////////////// Extend OTs and compute matrix C ///////////////////
-
 						u8* recvMatrix;
 						recvMatrix = new u8[heightInBytes];
 
@@ -188,13 +190,45 @@ namespace scuPSI {
 							}
 						}
 					}
-
 					// std::cout << "Sender transposed hash input computed\n";
 					// timer.setTimePoint("Sender transposed hash input computed");
-
 					
+					/////////////////// Compute hash outputs ///////////////////////////
+					RandomOracle H(hashLengthInBytes);
+					u8 hashOutput[sizeof(block)];
+					u8* hashInputs[bucket2];
+					for (auto i = 0; i < bucket2; ++i) {
+						hashInputs[i] = new u8[widthInBytes];
+					}
 
+					for (auto low = 0; low < binSenderSize; low += bucket2) {
+						auto up = low + bucket2 < binSenderSize ? low + bucket2 : binSenderSize;
 
+						for (auto j = low; j < up; ++j) {
+							memset(hashInputs[j - low], 0, widthInBytes);
+						}
+
+						for (auto i = 0; i < width; ++i) {
+							for (auto j = low; j < up; ++j) {
+								hashInputs[j - low][i >> 3] |= (u8)((bool)(transHashInputs[i][j >> 3] & (1 << (j & 7)))) << (i & 7);
+							}
+						}
+
+						//u8* sentBuff;//u8* sentBuff = new u8[(up - low) * hashLengthInBytes];取消缓存大小限制，并定义到公共区
+						for (auto j = low; j < up; ++j) {
+							H.Reset();
+							H.Update(hashInputs[j - low], widthInBytes);
+							H.Final(hashOutput);
+
+							memcpy(tmpSentBuff + (j - low) * hashLengthInBytes, hashOutput, hashLengthInBytes);
+						}
+						//std::cout<< "Sender:ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);(266)" << std::endl;
+						//chl.asyncSend(tmpSentBuff, (up - low) * hashLengthInBytes);//单独设置线程执行发送操作；
+					}
+					tmpSentBuff += binSenderSize * hashLengthInBytes;
+					
+					// std::cout << "Sender hash outputs computed and sent\n";
+					// timer.setTimePoint("Sender hash outputs computed and sent");
 
 					//rowQ[k].resize(simple.mBins[bIdx].blks.size());// 矩阵Q的行数 = 元素个数(使用原有协议中的OT扩展方法，并令矩阵行数大于元素个数)
 					//
@@ -217,62 +251,14 @@ namespace scuPSI {
 		for (auto& thrd : thrds)
 			thrd.join();
 
-		//+---------- 多线程2：发送OPRF值 -----------+
+		//+++++++++++++++++++++++++++++++++ 多线程2：发送OPRF值 ++++++++++++++++++++++++++++++++++
 		auto sendingOprf = [&](u64 t)
 		{
-			/////////////////// Compute hash outputs ///////////////////////////
+			// todo:加入多线程
+			///////////////// Send hash outputs to sender ///////////////////
 			auto& chl = chls[t];
-			RandomOracle H(hashLengthInBytes);
-			u8 hashOutput[sizeof(block)];
-			u8* hashInputs[bucket2];
-			u64 binStartIdx = simple.mNumBins * t / numThreads;
-			u64 tempBinEndIdx = (simple.mNumBins * (t + 1) / numThreads);//计算endIdx的中间变量
-			u64 binEndIdx = std::min(tempBinEndIdx, simple.mNumBins);//处理边界条件
-
-			for (u64 i = binStartIdx; i < binEndIdx; i += stepSize)// 以stepSize个Bin作为循环单位
-			{
-				auto curStepSize = std::min(stepSize, binEndIdx - i);
-				u64 iterSend = 0, iterRecv = 0;
-				for (u64 k = 0; k < curStepSize; ++k)// 每次处理一个Bin,对应矩阵Q的一行
-				{
-					u64 bIdx = i + k;
-					u64 binSenderSize = simple.mBins[bIdx].blks.size();
-					span<block> itemsInBin = simple.mBins[bIdx].blks;
-					auto binSenderSizeInBytes = (binSenderSize + 7) / 8;
-
-					for (auto i = 0; i < bucket2; ++i) {
-						hashInputs[i] = new u8[widthInBytes];
-					}
-
-					for (auto low = 0; low < binSenderSize; low += bucket2) {
-						auto up = low + bucket2 < binSenderSize ? low + bucket2 : binSenderSize;
-
-						for (auto j = low; j < up; ++j) {
-							memset(hashInputs[j - low], 0, widthInBytes);
-						}
-
-						for (auto i = 0; i < width; ++i) {
-							for (auto j = low; j < up; ++j) {
-								hashInputs[j - low][i >> 3] |= (u8)((bool)(transHashInputs[i][j >> 3] & (1 << (j & 7)))) << (i & 7);
-							}
-						}
-
-						u8* sentBuff = new u8[(up - low) * hashLengthInBytes];
-
-						for (auto j = low; j < up; ++j) {
-							H.Reset();
-							H.Update(hashInputs[j - low], widthInBytes);
-							H.Final(hashOutput);
-
-							memcpy(sentBuff + (j - low) * hashLengthInBytes, hashOutput, hashLengthInBytes);
-						}
-						std::cout<< "Sender:ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);(266)" << std::endl;
-						chl.asyncSend(sentBuff, (up - low) * hashLengthInBytes);
-					}
-				}
-			}
-					// std::cout << "Sender hash outputs computed and sent\n";
-					// timer.setTimePoint("Sender hash outputs computed and sent");
+			std::cout<< "Sender:ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);(266)" << std::endl;
+			chl.asyncSend(tmpSentBuff, (up - low) * hashLengthInBytes);//单独设置线程执行发送操作；
 		};
 		
 		//+------------ 多线程等待 --------------+
