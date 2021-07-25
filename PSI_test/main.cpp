@@ -41,7 +41,7 @@ void runSender() {
 		sendChls[i] = ep1.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
 
 	//随机生成发送方的元素
-	std::cout << "Sender:random set generating start" << std::endl;
+	//std::cout << "Sender:random set generating start" << std::endl;
 	std::vector<block> senderSet(senderSize);
 	PRNG prng(oc::toBlock(123));
 	for (auto i = 0; i < senderSize; ++i) {
@@ -69,7 +69,7 @@ void runReceiver() {
 		recvChls[i] = ep0.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
 
 	//生成100个相同元素
-	std::cout << "Receiver:random set generating start(100 same items)" << std::endl;
+	//std::cout << "Receiver:random set generating start(100 same items)" << std::endl;
 	vector<block> receiverSet(receiverSize);
 	PRNG prng(oc::toBlock(123));
 	for (auto i = 0; i < 100; ++i) {
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
 	cmd.setDefault("ip", "localhost");
 	ip = cmd.get<string>("ip");
 
-	cmd.setDefault("thds", 2);
+	cmd.setDefault("thds", 1);
 	numThreads = cmd.get<u64>("thds");
 
 	bucket1 = bucket2 = 1 << 8;//(2^8=256)

@@ -171,10 +171,10 @@ namespace scuPSI {
 						for (auto i = 0; i < w; ++i) {
 							PRNG prng(otMessages[i + wLeft]);
 							prng.get(matrixC[i], heightInBytes);
-							std::cout << "Sender:chl.recv(recvMatrix, heightInBytes);(212)" << std::endl;
+							std::cout << "Sender:chl.recv();(175) " << i << std::endl;
 							chl.recv(recvMatrix, heightInBytes);
 
-							if (choices[i + wLeft]) {
+							if (otChoices[i + wLeft]) {
 								for (auto j = 0; j < heightInBytes; ++j) {
 									matrixC[i][j] ^= recvMatrix[j];
 								}
@@ -254,11 +254,16 @@ namespace scuPSI {
 		//+++++++++++++++++++++++++++++++++ 多线程2：发送OPRF值 ++++++++++++++++++++++++++++++++++
 		auto sendingOprf = [&](u64 t)
 		{
+			std::cout << "测试S：是否开始发送OPRF值" << std::endl;
 			// todo:加入多线程
 			///////////////// Send hash outputs to sender ///////////////////
 			auto& chl = chls[t];
-			std::cout<< "Sender:ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);(266)" << std::endl;
-			chl.asyncSend(tmpSentBuff, (up - low) * hashLengthInBytes);//单独设置线程执行发送操作；
+			u64 startIdx = senderSize * 2 * t / numThreads;
+			u64 tmpEndIdx = senderSize * 2 * (t + 1) / numThreads;
+			u64 endIdx = std::min(tmpEndIdx, senderSize * 2);
+			sentBuff += t * (endIdx - startIdx) * hashLengthInBytes;
+			
+			chl.asyncSend(sentBuff, (endIdx - startIdx) * hashLengthInBytes);//单独设置线程执行发送操作；
 		};
 		
 		//+------------ 多线程等待 --------------+

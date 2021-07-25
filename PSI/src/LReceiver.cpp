@@ -52,11 +52,12 @@ namespace scuPSI {
 		//------------------- 多线程1：OPRF矩阵 ----------------------
 		u64 height = 128;
 		u64 logHeight = 7;
-		u64* binPsi = new u64[balance.mNumBins];
-		u64 psiTotal;
-		u64 sentData[20] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-		u64 recvData[20] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 		u64 numThreads(chls.size());
+		u64 sentData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+		u64 recvData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+		u64* binPsi = new u64[numThreads];
+		u64 psiTotal;
+		
 		const bool isMultiThreaded = numThreads > 1;
 		
 		const u64 bucket1 = 1 << 8; //(256)
@@ -67,7 +68,8 @@ namespace scuPSI {
 		auto binReceiverSizeInBytes = (receiverSize + 7) / 8;
 		auto shift = (1 << logHeight) - 1;
 		auto widthBucket1 = sizeof(block) / locationInBytes;
-		u8* recvBuff;
+		
+		std::unordered_map<u64, std::vector<std::pair<block, u32>>> allHashes;
 		
 		u64 totalSentData, totalRecvData, totalData;
 		
@@ -89,11 +91,9 @@ namespace scuPSI {
 					u64 bIdx = i + k;
 					u64 binReceiverSize = balance.mBins[bIdx].blks.size();
 					span<block> binReceiverSet = balance.mBins[bIdx].blks;
-
-					//+----------------------------------- 计算单个Bin的交集 --------------------------------+
-					std::cout << "Receiver:run() " << "Thread:" << t << "; Bin:" << i + k << std::endl;
-					//run(chl, commonSeed, binCapacity, receiverSize, height, logHeight, itemsInBin, bIdx, psiInBin[bIdx], width, hashLengthInBytes, otMessages);
 					
+					std::cout << "Receiver:run() " << "Thread:" << t << "; Bin:" << i + k << std::endl;
+
 					//////////// Initialization ///////////////////
 
 					PRNG commonPrng(commonSeed);
@@ -206,7 +206,7 @@ namespace scuPSI {
 							for (auto j = 0; j < heightInBytes; ++j) {
 								sentMatrix[i][j] ^= matrixA[i][j] ^ matrixDelta[i][j];//sentMatrix参与异或运算，并作为最终的发送矩阵
 							}
-							//std::cout<< "Receiver:ch.asyncSend(sentMatrix[i], heightInBytes);(261)" << std::endl;
+							std::cout<< "Receiver:ch.asyncSend();(210)" <<  std::endl;
 							chl.asyncSend(sentMatrix[i], heightInBytes);//按列发送
 						}
 
@@ -227,7 +227,7 @@ namespace scuPSI {
 					/////////////////// Compute hash outputs ///////////////////////////
 					RandomOracle H(hashLengthInBytes);
 					u8 hashOutput[sizeof(block)];
-					std::unordered_map<u64, std::vector<std::pair<block, u32>>> allHashes;
+					
 					u8* hashInputs[bucket2];
 					for (auto i = 0; i < bucket2; ++i) {
 						hashInputs[i] = new u8[widthInBytes];
@@ -289,24 +289,29 @@ namespace scuPSI {
 		{
 			///////////////// Receive hash outputs from sender and compute PSI ///////////////////
 			auto& chl = chls[t];
+			u8* recvBuff;
 			chl.recv(recvBuff);
+			u64 startIdx = senderSize * 2 * t / numThreads;
+			u64 tmpEndIdx = senderSize * 2 * (t + 1) / numThreads;
+			u64 endIdx = std::min(tmpEndIdx, senderSize * 2);
 			
-			for (auto idx = 0; idx < senderSize * 2; idx++) 
+			std::cout << "测试R：是否开始计算PSI" << std::endl;
+			for (auto idx = 0; idx < endIdx; idx++) 
 			{
 				// todo:加入多线程
 				// 计算PSI
 				u64 mapIdx = *(u64*)(recvBuff + idx * hashLengthInBytes);//取前64位
 
-				//查找1：对比前64位
+				// 查找1：对比前64位，可能存在多个匹配
 				auto found = allHashes.find(mapIdx);
 				if (found == allHashes.end()) continue;
 
-				//查找2：对比所有位
+				// 查找2：对比所有位
 				for (auto i = 0; i < found->second.size(); ++i) 
 				{
 					if (memcmp(&(found->second[i].first), recvBuff + idx * hashLengthInBytes, hashLengthInBytes) == 0) 
 					{
-						++binPsi[i + k];
+						++binPsi[t];//todo:BinPSI修改为线程共享
 						break;
 					}
 				}
@@ -360,7 +365,7 @@ namespace scuPSI {
 		timer.setTimePoint("Receiver intersection computed");
 		std::cout << timer;
 
-		for (u64 i = 0; i < 20; i++) {
+		for (u64 i = 0; i < 8; i++) {
 			totalSentData += sentData[i];
 			totalRecvData += recvData[i];
 		}
