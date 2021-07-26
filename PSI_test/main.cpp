@@ -35,10 +35,10 @@ string ip;
 void runSender() {
 	// set up networking
 	IOService ios;
-	Endpoint ep1(ios, ip, 1122, EpMode::Server, "test-psi");
+	Endpoint ep(ios, ip, EpMode::Server, "test-psi");
 	std::vector<Channel> sendChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
-		sendChls[i] = ep1.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
+		sendChls[i] = ep.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
 
 	//随机生成发送方的元素
 	//std::cout << "Sender:random set generating start" << std::endl;
@@ -55,18 +55,18 @@ void runSender() {
 
 	for (u64 i = 0; i < numThreads; ++i)
 		sendChls[i].close();
-	ep1.stop();
+	ep.stop();
 	ios.stop();
 }
 
 void runReceiver() {
 	// set up networking
 	IOService ios;
-	Endpoint ep0(ios, ip, 1122, EpMode::Client, "test-psi");
+	Endpoint ep(ios, ip, EpMode::Client, "test-psi");
 
 	std::vector<Channel> recvChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
-		recvChls[i] = ep0.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
+		recvChls[i] = ep.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
 
 	//生成100个相同元素
 	//std::cout << "Receiver:random set generating start(100 same items)" << std::endl;
@@ -89,7 +89,7 @@ void runReceiver() {
 
 	for (u64 i = 0; i < numThreads; ++i)
 		recvChls[i].close();
-	ep0.stop();
+	ep.stop();
 	ios.stop();
 }
 
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
 	cmd.setDefault("ip", "localhost");
 	ip = cmd.get<string>("ip");
 
-	cmd.setDefault("thds", 1);
+	cmd.setDefault("thds", 4);
 	numThreads = cmd.get<u64>("thds");
 
 	bucket1 = bucket2 = 1 << 8;//(2^8=256)

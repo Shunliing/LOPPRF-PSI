@@ -95,7 +95,6 @@ namespace scuPSI {
 					std::cout << "Receiver:run() " << "Thread:" << t << "; Bin:" << i + k << std::endl;
 
 					//////////// Initialization ///////////////////
-
 					PRNG commonPrng(commonSeed);
 					block commonKey;
 					AES commonAes;
@@ -206,8 +205,9 @@ namespace scuPSI {
 							for (auto j = 0; j < heightInBytes; ++j) {
 								sentMatrix[i][j] ^= matrixA[i][j] ^ matrixDelta[i][j];//sentMatrix参与异或运算，并作为最终的发送矩阵
 							}
-							std::cout<< "Receiver:ch.asyncSend();(210)" <<  std::endl;
-							chl.asyncSend(sentMatrix[i], heightInBytes);//按列发送
+							//std::cout<< "Receiver:ch.asyncSend();(210)" <<  std::endl;
+							//std::cout << "sentMatrix[" << i << "]" <<sentMatrix[i] << "\n";
+							chl.asyncSend(std::move(sentMatrix[i]), heightInBytes);//按列发送 chl.asyncSend(std::move(sentMatrix[i]));
 						}
 
 						///////////////// Compute hash inputs (transposed) /////////////////////

@@ -171,8 +171,9 @@ namespace scuPSI {
 						for (auto i = 0; i < w; ++i) {
 							PRNG prng(otMessages[i + wLeft]);
 							prng.get(matrixC[i], heightInBytes);
-							std::cout << "Sender:chl.recv();(175) " << i << std::endl;
-							chl.recv(recvMatrix, heightInBytes);
+							//std::cout << "Sender:chl.recv();(175) " << i << std::endl;
+							chl.recv(recvMatrix, heightInBytes);//chl.recv(recvMatrix, heightInBytes);
+							//std::cout << "recvMatrix[" << i << "] " << recvMatrix[i] << "\n";
 
 							if (otChoices[i + wLeft]) {
 								for (auto j = 0; j < heightInBytes; ++j) {
