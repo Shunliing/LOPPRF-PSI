@@ -35,11 +35,19 @@ string ip;
 void runSender() {
 	// set up networking
 	IOService ios;
-	Endpoint ep(ios, ip, EpMode::Server, "test-psi");
+	Endpoint server(ios, ip, 1215, EpMode::Server, "test-psi");
 	std::vector<Channel> sendChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
-		sendChls[i] = ep.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
+		sendChls[i] = server.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
 
+	for (u64 i = 0; i < numThreads; ++i)
+		std::cout << "Channel" << i << " connected = " << sendChls[i].isConnected() << std::endl;
+
+	for (u64 i = 0; i < numThreads; ++i)
+		sendChls[i].waitForConnection();
+
+	for (u64 i = 0; i < numThreads; ++i)
+		std::cout << "Channel" << i << " connected = " << sendChls[i].isConnected() << std::endl;
 	//随机生成发送方的元素
 	//std::cout << "Sender:random set generating start" << std::endl;
 	std::vector<block> senderSet(senderSize);
@@ -55,18 +63,24 @@ void runSender() {
 
 	for (u64 i = 0; i < numThreads; ++i)
 		sendChls[i].close();
-	ep.stop();
+	server.stop();
 	ios.stop();
 }
 
 void runReceiver() {
 	// set up networking
 	IOService ios;
-	Endpoint ep(ios, ip, EpMode::Client, "test-psi");
+	Endpoint client(ios, ip, 1215, EpMode::Client, "test-psi");
 
 	std::vector<Channel> recvChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
-		recvChls[i] = ep.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
+		recvChls[i] = client.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
+	for (u64 i = 0; i < numThreads; ++i)
+		std::cout << "Channel" << i << " connected = " << recvChls[i].isConnected() << std::endl;
+	for (u64 i = 0; i < numThreads; ++i)
+		recvChls[i].waitForConnection();
+	for (u64 i = 0; i < numThreads; ++i)
+		std::cout << "Channel" << i << " connected = " << recvChls[i].isConnected() << std::endl;
 
 	//生成100个相同元素
 	//std::cout << "Receiver:random set generating start(100 same items)" << std::endl;
@@ -89,7 +103,7 @@ void runReceiver() {
 
 	for (u64 i = 0; i < numThreads; ++i)
 		recvChls[i].close();
-	ep.stop();
+	client.stop();
 	ios.stop();
 }
 
@@ -167,7 +181,7 @@ int main(int argc, char** argv) {
 	cmd.setDefault("ip", "localhost");
 	ip = cmd.get<string>("ip");
 
-	cmd.setDefault("thds", 4);
+	cmd.setDefault("thds", 1);
 	numThreads = cmd.get<u64>("thds");
 
 	bucket1 = bucket2 = 1 << 8;//(2^8=256)

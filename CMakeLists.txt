@@ -19,7 +19,7 @@ set(CMAKE_CXX_FLAGS  "${CMAKE_C_FLAGS}  -std=c++14")
 # Set a default build type for single-configuration
 # CMake generators if no build type is set.
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
-   SET(CMAKE_BUILD_TYPE Release)
+   SET(CMAKE_BUILD_TYPE Debug)
 endif()
 
 

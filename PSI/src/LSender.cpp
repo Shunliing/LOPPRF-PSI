@@ -43,7 +43,7 @@ namespace scuPSI {
 		//itemsToBins(chls, commonSeed, senderSet, senderSize, width, hashLengthInBytes, otMessages, otChoices);
 		
 
-		//++++++++++++++++++++++++++ 简单哈希：将元素映射到Bin中 +++++++++++++++++++++++++++++
+		//++++++++++++++++++++++++++ 简单哈希：将元素映射到Bin中 +++++++++++++++++++++++++++++++
 		simple.init(senderSize, maxBinSize, recvNumDummies);
 		simple.insertItems(senderSet);
 		std::cout << "Sender:simple binning finished" << std::endl;
@@ -141,6 +141,7 @@ namespace scuPSI {
 
 					// std::cout << "Sender set transformed\n";
 					// timer.setTimePoint("Sender set transformed");
+					auto j = 0;
 
 					for (auto wLeft = 0; wLeft < width; wLeft += widthBucket1) {
 						auto wRight = wLeft + widthBucket1 < width ? wLeft + widthBucket1 : width;
@@ -150,6 +151,7 @@ namespace scuPSI {
 
 						commonPrng.get((u8*)&commonKey, sizeof(block));
 						commonAes.setKey(commonKey);
+
 
 						for (auto low = 0; low < binSenderSize; low += bucket1) {
 
@@ -167,6 +169,7 @@ namespace scuPSI {
 						//////////////// Extend OTs and compute matrix C ///////////////////
 						u8* recvMatrix;
 						recvMatrix = new u8[heightInBytes];
+						
 
 						for (auto i = 0; i < w; ++i) {
 							PRNG prng(otMessages[i + wLeft]);
@@ -174,6 +177,9 @@ namespace scuPSI {
 							//std::cout << "Sender:chl.recv();(175) " << i << std::endl;
 							chl.recv(recvMatrix, heightInBytes);//chl.recv(recvMatrix, heightInBytes);
 							//std::cout << "recvMatrix[" << i << "] " << recvMatrix[i] << "\n";
+							j++;
+							std::cout << "chl.recv()次数： " << j <<std::endl;
+
 
 							if (otChoices[i + wLeft]) {
 								for (auto j = 0; j < heightInBytes; ++j) {
@@ -181,6 +187,8 @@ namespace scuPSI {
 								}
 							}
 						}
+						//std::cout << "Compute hash inputs (transposed)是否执行" << "\n";
+
 
 						///////////////// Compute hash inputs (transposed) /////////////////////
 						for (auto i = 0; i < w; ++i) {
@@ -191,6 +199,7 @@ namespace scuPSI {
 							}
 						}
 					}
+					std::cout << binSenderSize << std::endl;
 					// std::cout << "Sender transposed hash input computed\n";
 					// timer.setTimePoint("Sender transposed hash input computed");
 					
@@ -222,6 +231,7 @@ namespace scuPSI {
 							H.Final(hashOutput);
 
 							memcpy(tmpSentBuff + (j - low) * hashLengthInBytes, hashOutput, hashLengthInBytes);
+							std::cout << "tmpSentBuff: " << *tmpSentBuff << std::endl;
 						}
 						//std::cout<< "Sender:ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);(266)" << std::endl;
 						//chl.asyncSend(tmpSentBuff, (up - low) * hashLengthInBytes);//单独设置线程执行发送操作；
