@@ -52,8 +52,8 @@ namespace scuPSI {
 		//++++++++++++++++++++++++++++++ 多线程1：计算OPPRF输出 ++++++++++++++++++++++++++++++
 		u64 numThreads(chls.size());
 		const bool isMultiThreaded = numThreads > 1;
-		u64 height = 128;
-		u64 logHeight = 7;
+		u64 height = 256;
+		u64 logHeight = 8;
 
 		const u64 bucket1 = 1 << 8;//(256)
 		const u64 bucket2 = 1 << 8;
@@ -67,8 +67,7 @@ namespace scuPSI {
 		PRNG commonPrng(commonSeed);
 		block commonKey;
 		AES commonAes;
-		u8* sentBuff;
-		u8* tmpSentBuff = sentBuff;
+		u8* sentBuff = new u8[2 * senderSize * hashLengthInBytes];
 
 		auto routine = [&](u64 t)
 		{
@@ -77,6 +76,12 @@ namespace scuPSI {
 			u64 tempBinEndIdx = (simple.mNumBins * (t + 1) / numThreads);//计算endIdx的中间变量
 			u64 binEndIdx = std::min(tempBinEndIdx, simple.mNumBins);//处理边界条件
 
+			u64 itemNumsAhead = 0;
+			for (u64 i = 0; i < binStartIdx; i++)
+			{
+				itemNumsAhead += simple.mBins[i].blks.size();
+			}
+			u8* buffStartInThread = sentBuff + itemNumsAhead * hashLengthInBytes;//存储发送数据的起始地址
 
 			for (u64 i = binStartIdx; i < binEndIdx; i += stepSize)// 以stepSize个Bin作为循环单位
 			{
@@ -178,7 +183,7 @@ namespace scuPSI {
 							chl.recv(recvMatrix, heightInBytes);//chl.recv(recvMatrix, heightInBytes);
 							//std::cout << "recvMatrix[" << i << "] " << recvMatrix[i] << "\n";
 							j++;
-							std::cout << "chl.recv()次数： " << j <<std::endl;
+							//std::cout << "chl.recv()次数： " << j <<std::endl;
 
 
 							if (otChoices[i + wLeft]) {
@@ -199,7 +204,7 @@ namespace scuPSI {
 							}
 						}
 					}
-					std::cout << binSenderSize << std::endl;
+					//std::cout << binSenderSize << std::endl;
 					// std::cout << "Sender transposed hash input computed\n";
 					// timer.setTimePoint("Sender transposed hash input computed");
 					
@@ -230,13 +235,13 @@ namespace scuPSI {
 							H.Update(hashInputs[j - low], widthInBytes);
 							H.Final(hashOutput);
 
-							memcpy(tmpSentBuff + (j - low) * hashLengthInBytes, hashOutput, hashLengthInBytes);
-							std::cout << "tmpSentBuff: " << *tmpSentBuff << std::endl;
+							memmove(buffStartInThread + (j - low) * hashLengthInBytes, hashOutput, hashLengthInBytes);
+							//std::cout << "buffStartInThread: " << *buffStartInThread << std::endl;
 						}
 						//std::cout<< "Sender:ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);(266)" << std::endl;
 						//chl.asyncSend(tmpSentBuff, (up - low) * hashLengthInBytes);//单独设置线程执行发送操作；
 					}
-					tmpSentBuff += binSenderSize * hashLengthInBytes;
+					buffStartInThread += binSenderSize * hashLengthInBytes;
 					
 					// std::cout << "Sender hash outputs computed and sent\n";
 					// timer.setTimePoint("Sender hash outputs computed and sent");

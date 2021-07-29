@@ -50,8 +50,8 @@ namespace scuPSI {
 		//itemsToBins(chls, commonSeed, receiverSet, receiverSize, width, hashLengthInBytes, otMessages);
 
 		//------------------- 多线程1：OPRF矩阵 ----------------------
-		u64 height = 128;
-		u64 logHeight = 7;
+		u64 height = 256;
+		u64 logHeight = 8;
 		u64 numThreads(chls.size());
 		u64 sentData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 		u64 recvData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
