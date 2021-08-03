@@ -45,13 +45,33 @@ namespace scuPSI {
 		std::cout << "Receiver:balanced binning finished" << std::endl;
 		timer.setTimePoint("Receiver balanced binning finished");
 
-
-		//---------------- 哈希算法 并行 --------------------
+		//--------------------- megaBin定义 -------------------------
+		u64 binStepSize = 1336;
+		u64 mNumMegaBins;
+		if(balance.mNumBins % binStepSize == 0)
+			mNumMegaBins = balance.mNumBins / binStepSize;
+		else
+			mNumMegaBins = balance.mNumBins / binStepSize + 1;
+		std::vector<std::vector<block>> megaBin(mNumMegaBins);
+		u64 iterMega = 0;
+		for(u64 i = 0; i < balance.mNumBins; i += binStepSize)
+		{
+			u64 curBinStepSize = std::min(binStepSize, balance.mNumBins - i);
+			for(u64 j = 0; j < curBinStepSize; j++)
+			{
+				for(u64 k = 0; k < balance.mBins[i + j].blks.size(); k++)
+				{
+					megaBin[iterMega].push_back(balance.mBins[i + j].blks[k]);
+				}
+			}
+			iterMega++;
+		}
+		//---------------------- 哈希算法 并行 ------------------------
 		//itemsToBins(chls, commonSeed, receiverSet, receiverSize, width, hashLengthInBytes, otMessages);
 
 		//------------------- 多线程1：OPRF矩阵 ----------------------
-		u64 height = 256;
-		u64 logHeight = 8;
+		u64 height = 131072;
+		u64 logHeight = 17;
 		u64 numThreads(chls.size());
 		u64 sentData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 		u64 recvData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -73,26 +93,27 @@ namespace scuPSI {
 		
 		u64 totalSentData, totalRecvData, totalData;
 		
+		//+------------ 线程定义 --------------+
 		auto routine = [&](u64 t)
 		{
 			auto& chl = chls[t];
-			u64 binStartIdx = balance.mNumBins * t / numThreads;
-			u64 tempBinEndIdx = (balance.mNumBins * (t + 1) / numThreads);
-			u64 binEndIdx = std::min(tempBinEndIdx, balance.mNumBins);
+			u64 megaBinStartIdx = mNumMegaBins * t / numThreads;
+			u64 tempMegaBinEndIdx = (mNumMegaBins * (t + 1) / numThreads);
+			u64 megaBinEndIdx = std::min(tempMegaBinEndIdx, mNumMegaBins);
 
-			for (u64 i = binStartIdx; i < binEndIdx; i += stepSize)
+			for (u64 i = megaBinStartIdx; i < megaBinEndIdx; i += stepSize)
 			{
-				auto curStepSize = std::min(stepSize, binEndIdx - i);
+				auto curStepSize = std::min(stepSize, megaBinEndIdx - i);
 
 				u64 iterSend = 0;
 
 				for (u64 k = 0; k < curStepSize; ++k)
 				{
 					u64 bIdx = i + k;
-					u64 binReceiverSize = balance.mBins[bIdx].blks.size();
-					span<block> binReceiverSet = balance.mBins[bIdx].blks;
+					u64 megaBinReceiverSize = megaBin[bIdx].size();
+					span<block> binReceiverSet = megaBin[bIdx];//测试
 					
-					std::cout << "Receiver:run() " << "Thread:" << t << "; Bin:" << i + k << std::endl;
+					std::cout << "Receiver:run() " << "Thread:" << t << "; MegaBin:" << i + k << std::endl;
 
 					//////////// Initialization ///////////////////
 					PRNG commonPrng(commonSeed);
@@ -108,7 +129,7 @@ namespace scuPSI {
 
 					u8* transLocations[widthBucket1];
 					for (auto i = 0; i < widthBucket1; ++i) {
-						transLocations[i] = new u8[binReceiverSize * locationInBytes + sizeof(u32)];//为什么要加sizeof(u32)？
+						transLocations[i] = new u8[megaBinReceiverSize * locationInBytes + sizeof(u32)];//为什么要加sizeof(u32)？
 					}
 
 					block randomLocations[bucket1];
@@ -127,15 +148,15 @@ namespace scuPSI {
 					commonPrng.get((u8*)&commonKey, sizeof(block));
 					commonAes.setKey(commonKey);
 
-					block* recvSet = new block[binReceiverSize];
-					block* aesInput = new block[binReceiverSize];
-					block* aesOutput = new block[binReceiverSize];
+					block* recvSet = new block[megaBinReceiverSize];
+					block* aesInput = new block[megaBinReceiverSize];
+					block* aesOutput = new block[megaBinReceiverSize];
 					const u64 h1LengthInBytes = 32;
 
 					RandomOracle H1(h1LengthInBytes);
 					u8 h1Output[h1LengthInBytes];
 
-					for (auto i = 0; i < binReceiverSize; ++i) {//1. 随机预言机，先使用blake2函数哈希
+					for (auto i = 0; i < megaBinReceiverSize; ++i) {//1. 随机预言机，先使用blake2函数哈希
 						H1.Reset();
 						H1.Update((u8*)(binReceiverSet.data() + i), sizeof(block));
 						H1.Final(h1Output);
@@ -144,9 +165,9 @@ namespace scuPSI {
 						recvSet[i] = *(block*)(h1Output + sizeof(block));
 					}
 
-					commonAes.ecbEncBlocks(aesInput, binReceiverSize, aesOutput);//2. 然后使用AES加密（PRG）
+					commonAes.ecbEncBlocks(aesInput, megaBinReceiverSize, aesOutput);//2. 然后使用AES加密（PRG）
 
-					for (auto i = 0; i < binReceiverSize; ++i) {//3. 最后recvSet与AES输出相异或
+					for (auto i = 0; i < megaBinReceiverSize; ++i) {//3. 最后recvSet与AES输出相异或
 						recvSet[i] ^= aesOutput[i];
 					}
 
@@ -163,9 +184,9 @@ namespace scuPSI {
 						commonPrng.get((u8*)&commonKey, sizeof(block));
 						commonAes.setKey(commonKey);
 
-						for (auto low = 0; low < binReceiverSize; low += bucket1) {
+						for (auto low = 0; low < megaBinReceiverSize; low += bucket1) {
 
-							auto up = low + bucket1 < binReceiverSize ? low + bucket1 : binReceiverSize;//2. 纵向，取较小值，处理边界情况
+							auto up = low + bucket1 < megaBinReceiverSize ? low + bucket1 : megaBinReceiverSize;//2. 纵向，取较小值，处理边界情况
 
 							commonAes.ecbEncBlocks(recvSet + low, up - low, randomLocations);//3. Aes加密，生成randomLocations
 
@@ -183,7 +204,7 @@ namespace scuPSI {
 						}
 
 						for (auto i = 0; i < w; ++i) {
-							for (auto j = 0; j < binReceiverSize; ++j) {
+							for (auto j = 0; j < megaBinReceiverSize; ++j) {
 								auto location = (*(u32*)(transLocations[i] + j * locationInBytes)) & shift;
 
 								matrixDelta[i][location >> 3] &= ~(1 << (location & 7));//非映射位置取反，然后按位与操作
@@ -213,7 +234,7 @@ namespace scuPSI {
 						///////////////// Compute hash inputs (transposed) /////////////////////
 
 						for (auto i = 0; i < w; ++i) {
-							for (auto j = 0; j < binReceiverSize; ++j) {
+							for (auto j = 0; j < megaBinReceiverSize; ++j) {
 								auto location = (*(u32*)(transLocations[i] + j * locationInBytes)) & shift;
 
 								transHashInputs[i + wLeft][j >> 3] |= (u8)((bool)(matrixA[i][location >> 3] & (1 << (location & 7)))) << (j & 7);
@@ -233,8 +254,8 @@ namespace scuPSI {
 						hashInputs[i] = new u8[widthInBytes];
 					}
 
-					for (auto low = 0; low < binReceiverSize; low += bucket2) {
-						auto up = low + bucket2 < binReceiverSize ? low + bucket2 : binReceiverSize;
+					for (auto low = 0; low < megaBinReceiverSize; low += bucket2) {
+						auto up = low + bucket2 < megaBinReceiverSize ? low + bucket2 : megaBinReceiverSize;
 
 						for (auto j = low; j < up; ++j) {
 							memset(hashInputs[j - low], 0, widthInBytes);
@@ -318,13 +339,13 @@ namespace scuPSI {
 			}
 			
 			//  在Bin中执行元素比较时会用到
-			// u64 binStartIdx = balance.mNumBins * t / numThreads;
-			// u64 tempBinEndIdx = (balance.mNumBins * (t + 1) / numThreads);
-			// u64 binEndIdx = std::min(tempBinEndIdx, balance.mNumBins);
+			// u64 megaBinStartIdx = balance.mNumBins * t / numThreads;
+			// u64 tempMegaBinEndIdx = (balance.mNumBins * (t + 1) / numThreads);
+			// u64 megaBinEndIdx = std::min(tempMegaBinEndIdx, balance.mNumBins);
 			//
-			// for (u64 i = binStartIdx; i < binEndIdx; i += stepSize)
+			// for (u64 i = megaBinStartIdx; i < megaBinEndIdx; i += stepSize)
 			// {
-			//	auto curStepSize = std::min(stepSize, binEndIdx - i);
+			//	auto curStepSize = std::min(stepSize, megaBinEndIdx - i);
 			//	for (u64 k = 0; k < curStepSize; ++k)
 			//	{
 			//		/*if (psi == 100) {

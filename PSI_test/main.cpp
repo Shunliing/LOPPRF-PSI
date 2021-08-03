@@ -35,7 +35,7 @@ string ip;
 void runSender() {
 	// set up networking
 	IOService ios;
-	Endpoint server(ios, ip, 1213, EpMode::Server, "test-psi");
+	Endpoint server(ios, ip, 1212, EpMode::Server, "test-psi");
 	std::vector<Channel> sendChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
 		sendChls[i] = server.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
@@ -55,6 +55,7 @@ void runSender() {
 	for (auto i = 0; i < senderSize; ++i) {
 		senderSet[i] = prng.get<block>();
 	}
+	std::cout << "Sender:senderSize: " << senderSize << std::endl;
 	std::cout << "Sender:random set generating finished" << std::endl;
 
 	LSender lSender;
@@ -70,7 +71,7 @@ void runSender() {
 void runReceiver() {
 	// set up networking
 	IOService ios;
-	Endpoint client(ios, ip, 1213, EpMode::Client, "test-psi");
+	Endpoint client(ios, ip, 1212, EpMode::Client, "test-psi");
 
 	std::vector<Channel> recvChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
