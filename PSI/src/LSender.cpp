@@ -11,22 +11,36 @@ namespace scuPSI {
 	void LSender::batchOutput(PRNG& prng, span<Channel> chls, block& commonSeed, const u64& senderSize, const u64& width, span<block> senderSet, u64& hashLengthInBytes)
 	{
 		//////////////////// Base OTs ///////////////////////
-		//std::cout << "Sender:base OT start" << std::endl;
-		timer.setTimePoint("Sender start");
-		IknpOtExtReceiver otExtReceiver;
-		//std::cout << "Sender:genBaseOts(prng, ch)前" << std::endl;
-		otExtReceiver.genBaseOts(prng, chls[0]);
-		//std::cout << "Sender:genBaseOts(prng, ch)后" << std::endl;
-		BitVector choices(width);
-		std::vector<block> otMessages(width);
-		prng.get(choices.data(), choices.sizeBytes());
-		otExtReceiver.receive(choices, otMessages, prng, chls[0]);
+		////std::cout << "Sender:base OT start" << std::endl;
+		//timer.setTimePoint("Sender start");
+		//IknpOtExtReceiver otExtReceiver;
+		////std::cout << "Sender:genBaseOts(prng, ch)前" << std::endl;
+		//otExtReceiver.genBaseOts(prng, chls[0]);
+		////std::cout << "Sender:genBaseOts(prng, ch)后" << std::endl;
+		//BitVector choices(width);
+		//std::vector<block> otMessages(width);
+		//prng.get(choices.data(), choices.sizeBytes());
+		//otExtReceiver.receive(choices, otMessages, prng, chls[0]);
 
-		//std::cout << "Sender:base OT finished\n";
-		timer.setTimePoint("Sender base OT finished");
+		////std::cout << "Sender:base OT finished\n";
+		//timer.setTimePoint("Sender base OT finished");
+
+		//-----------------参考SpOT实现------------------------
+		std::vector<std::array<block, 2>> baseOtSend(128);
+		NaorPinkas baseOTs;
+		baseOTs.send(baseOtSend, prng, chls[0], chls.size());
+		IknpOtExtReceiver recvIKNP;
+		recvIKNP.setBaseOts(baseOtSend);
+		
+		BitVector otChoices;
+		otChoices.resize(width);
+		otChoices.randomize(prng);
+		std::vector<block> otMessages(width);
+		recvIKNP.receive(otChoices, otMessages, prng, chls[0]);
+		std::cout << "Sender:base OT finished\n";
 
 		//////////////// 哈希算法 并行 ///////////////////////
-		itemsToBins(chls, commonSeed, senderSet, senderSize, width, hashLengthInBytes, otMessages, choices);
+		itemsToBins(chls, commonSeed, senderSet, senderSize, width, hashLengthInBytes, otMessages, otChoices);
 	}
 
 
@@ -39,7 +53,7 @@ namespace scuPSI {
 		//======简单哈希======
 		simple.init(senderSize, maxBinSize, recvNumDummies);
 		simple.insertItems(senderSet);
-		std::cout << "Sender simple binning finished" << std::endl;
+		std::cout << "Sender:simple binning finished" << std::endl;
 		timer.setTimePoint("Sender simple binning finished");
 
 		//====线程与Bins======
@@ -50,8 +64,8 @@ namespace scuPSI {
 			u64 tempBinEndIdx = (simple.mNumBins * (t + 1) / numThreads);//计算endIdx的中间变量
 			u64 binEndIdx = std::min(tempBinEndIdx, simple.mNumBins);//处理边界条件
 
-			u64 height = 64;
-			u64 logHeight = 8;
+			u64 height = 128;
+			u64 logHeight = 7;
 
 			for (u64 i = binStartIdx; i < binEndIdx; i += stepSize)// 以stepSize个Bin作为循环单位
 			{
@@ -67,7 +81,7 @@ namespace scuPSI {
 					//u64 recvBinCapacity = binCapacity;
 
 					//------------------------- 计算单个Bin的oprf输出 -----------------------
-					std::cout << "Sender:单次调用run()函数" << std::endl;
+					std::cout << "Sender:run() " << "Thread:" << t << "; Bin:" << i + k << std::endl;
 					run(chl, commonSeed, binCapacity, height, logHeight, itemsInBin, bIdx, width, hashLengthInBytes, otMessages, choices);
 
 					//rowQ[k].resize(simple.mBins[bIdx].blks.size());// 矩阵Q的行数 = 元素个数(使用原有协议中的OT扩展方法，并令矩阵行数大于元素个数)
@@ -93,7 +107,7 @@ namespace scuPSI {
 			thrd.join();
 
 		//
-		std::cout << "Sender hash outputs computed and sent" << std::endl;
+		std::cout << "Sender:hash outputs computed and sent" << std::endl;
 		timer.setTimePoint("Sender hash outputs computed and sent");
 		std::cout << timer;
 	}
@@ -195,7 +209,7 @@ namespace scuPSI {
 			for (auto i = 0; i < w; ++i) {
 				PRNG prng(otMessages[i + wLeft]);
 				prng.get(matrixC[i], heightInBytes);
-
+				std::cout << "Sender:ch.recv(recvMatrix, heightInBytes);(212)" << std::endl;
 				ch.recv(recvMatrix, heightInBytes);
 
 				if (choices[i + wLeft]) {
@@ -249,7 +263,7 @@ namespace scuPSI {
 
 				memcpy(sentBuff + (j - low) * hashLengthInBytes, hashOutput, hashLengthInBytes);
 			}
-
+			std::cout<< "Sender:ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);(266)" << std::endl;
 			ch.asyncSend(sentBuff, (up - low) * hashLengthInBytes);
 		}
 

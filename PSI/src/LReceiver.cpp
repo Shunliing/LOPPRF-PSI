@@ -14,18 +14,31 @@ namespace scuPSI {
 	void scuPSI::LReceiver::batchOutput(PRNG& prng, span<Channel> chls, block& commonSeed, const u64& senderSize, const u64& receiverSize, const u64& width, span<block> receiverSet, u64& hashLengthInBytes)
 	{
 		//------------------ Base OTs ----------------------
-		//PSI接收方作为OT的发送方
-		std::cout << "Receiver:base OT start" << std::endl;
-		timer.setTimePoint("Sender start");
-		IknpOtExtSender otExtSender;
-		//std::cout << ch <<std::endl;
-		std::cout << "Receiver:genBaseOts(prng, ch)前" << std::endl;
-		otExtSender.genBaseOts(prng, chls[0]);
-		std::cout << "Receiver:genBaseOts(prng, ch)后" << std::endl;
-		std::vector<std::array<block, 2> > otMessages(width);//定义两个ot信息
-		otExtSender.send(otMessages, prng, chls[0]);
+		////PSI接收方作为OT的发送方
+		//std::cout << "Receiver:base OT start" << std::endl;
+		//timer.setTimePoint("Sender start");
+		//IknpOtExtSender otExtSender;
+		////std::cout << ch <<std::endl;
+		//std::cout << "Receiver:genBaseOts(prng, ch)前" << std::endl;
+		//otExtSender.genBaseOts(prng, chls[0]);
+		//std::cout << "Receiver:genBaseOts(prng, ch)后" << std::endl;
+		//std::vector<std::array<block, 2> > otMessages(width);//定义两个ot
+		//otExtSender.send(otMessages, prng, chls[0]);
+		//std::cout << "Receiver:base OT finished\n";
+		//timer.setTimePoint("Receiver base OT finished");
+
+		//--------------------- 参考SpOT实现 -------------------------
+		std::vector<block> baseOtRecv(128);
+		BitVector baseOtChoices(128);
+		baseOtChoices.randomize(prng);
+		NaorPinkas baseOTs;
+		baseOTs.receive(baseOtChoices, baseOtRecv, prng, chls[0], chls.size());
+		IknpOtExtSender sendIKNP;
+		sendIKNP.setBaseOts(baseOtRecv, baseOtChoices);
+		std::vector<std::array<block, 2>> otMessages(width);
+		sendIKNP.send(otMessages, prng, chls[0]);
 		std::cout << "Receiver:base OT finished\n";
-		timer.setTimePoint("Receiver base OT finished");
+
 
 		//---------------- 哈希算法 并行 --------------------
 		itemsToBins(chls, commonSeed, receiverSet, receiverSize, width, hashLengthInBytes, otMessages);
@@ -44,8 +57,8 @@ namespace scuPSI {
 		timer.setTimePoint("Receiver balanced binning finished");
 
 		//--------线程与Bin--------
-		u64 height = 64;
-		u64 logHeight = 8;
+		u64 height = 128;
+		u64 logHeight = 7;
 
 		u64* psiInBin = new u64[balance.mNumBins];
 		u64 psiTotal;
@@ -76,7 +89,7 @@ namespace scuPSI {
 					span<block> itemsInBin = balance.mBins[bIdx].blks;
 
 					//+----------------------------------- 计算单个Bin的交集 --------------------------------+
-					std::cout << "Receiver:单次调用()函数" << std::endl;
+					std::cout << "Receiver:run() " << "Thread:" << t << "; Bin:" << i + k << std::endl;
 					run(chl, commonSeed, binCapacity, receiverSize, height, logHeight, itemsInBin, bIdx, psiInBin[bIdx], width, hashLengthInBytes, otMessages);
 				}
 			}
@@ -229,7 +242,7 @@ namespace scuPSI {
 				}
 			}
 
-			//////////////// Compute matrix A & sent matrix //////////////////仍发送较大的扩展矩阵?-与原始的概念有所不同
+			//////////////// Compute matrix A & sent matrix //////////////////
 
 			u8* sentMatrix[w];
 
@@ -244,7 +257,7 @@ namespace scuPSI {
 				for (auto j = 0; j < heightInBytes; ++j) {
 					sentMatrix[i][j] ^= matrixA[i][j] ^ matrixDelta[i][j];//sentMatrix参与异或运算，并作为最终的发送矩阵
 				}
-
+				//std::cout<< "Receiver:ch.asyncSend(sentMatrix[i], heightInBytes);(261)" << std::endl;
 				ch.asyncSend(sentMatrix[i], heightInBytes);//按列发送
 			}
 
@@ -299,13 +312,13 @@ namespace scuPSI {
 
 		///////////////// Receive hash outputs from sender and compute PSI ///////////////////
 
-		u8* recvBuff = new u8[bucket2 * hashLengthInBytes];
+		u8* recvBuff;//u8* recvBuff = new u8[bucket2 * hashLengthInBytes]
 
 		auto psi = 0;
 
 		for (auto low = 0; low < senderSize; low += bucket2) {
 			auto up = low + bucket2 < senderSize ? low + bucket2 : senderSize;
-
+			std::cout<< "Receiver:ch.recv(recvBuff, (up - low) * hashLengthInBytes);(322)" << std::endl; 
 			ch.recv(recvBuff, (up - low) * hashLengthInBytes);
 
 			for (auto idx = 0; idx < up - low; ++idx) {

@@ -35,19 +35,19 @@ string ip;
 void runSender() {
 	// set up networking
 	IOService ios;
-	Endpoint ep1(ios, ip, 1121, EpMode::Server, "test-psi");
+	Endpoint ep1(ios, ip, 1122, EpMode::Server, "test-psi");
 	std::vector<Channel> sendChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
 		sendChls[i] = ep1.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
 
 	//随机生成发送方的元素
-	std::cout << "Sender:随机生成集合元素" << std::endl;
+	std::cout << "Sender:random set generating start" << std::endl;
 	std::vector<block> senderSet(senderSize);
 	PRNG prng(oc::toBlock(123));
 	for (auto i = 0; i < senderSize; ++i) {
 		senderSet[i] = prng.get<block>();
 	}
-	std::cout << "Sender:元素生成结束" << std::endl;
+	std::cout << "Sender:random set generating finished" << std::endl;
 
 	LSender lSender;
 	lSender.batchOutput(prng, sendChls, commonSeed, senderSize, width, senderSet, hashLengthInBytes);
@@ -62,14 +62,14 @@ void runSender() {
 void runReceiver() {
 	// set up networking
 	IOService ios;
-	Endpoint ep0(ios, ip, 1121, EpMode::Client, "test-psi");
+	Endpoint ep0(ios, ip, 1122, EpMode::Client, "test-psi");
 
 	std::vector<Channel> recvChls(numThreads);
 	for (u64 i = 0; i < numThreads; ++i)
 		recvChls[i] = ep0.addChannel("chl" + std::to_string(i), "chl" + std::to_string(i));
 
 	//生成100个相同元素
-	std::cout << "Receiver:随机生成集合元素(含有100个相同元素)" << std::endl;
+	std::cout << "Receiver:random set generating start(100 same items)" << std::endl;
 	vector<block> receiverSet(receiverSize);
 	PRNG prng(oc::toBlock(123));
 	for (auto i = 0; i < 100; ++i) {
@@ -81,7 +81,7 @@ void runReceiver() {
 	for (auto i = 100; i < receiverSize; ++i) {
 		receiverSet[i] = prng2.get<block>();
 	}
-	std::cout << "Receiver:元素生成结束" << std::endl;
+	std::cout << "Receiver:random set generating finished" << std::endl;
 
 	LReceiver lReceiver;
 	lReceiver.batchOutput(prng, recvChls, commonSeed, senderSize, receiverSize, width, receiverSet, hashLengthInBytes);

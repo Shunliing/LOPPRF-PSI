@@ -10,6 +10,7 @@
 #include <cryptoTools/Common/Timer.h>
 #include <libOTe/TwoChooseOne/IknpOtExtSender.h>
 #include <libOTe/TwoChooseOne/IknpOtExtReceiver.h>
+#include <libOTe/Base/naor-pinkas.h>
 
 #define ON 1
 #define OFF 0
@@ -54,6 +55,7 @@ namespace scuPSI {
 	using TimeUnit = oc::Timer::timeUnit;
 	using Timer = oc::Timer;
 	using Log = oc::Log;
+	using NaorPinkas = oc::NaorPinkas;
 
 	//自定义，参考SpOT
 	static const u64 recvNumDummies(1);
