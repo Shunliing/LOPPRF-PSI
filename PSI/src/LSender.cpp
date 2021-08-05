@@ -122,7 +122,7 @@ namespace scuPSI {
 					auto megaBinSenderSizeInBytes = (megaBinSenderSize + 7) / 8;
 
 					//------------------------- 计算单个Bin的oprf输出 -----------------------
-					std::cout << "Sender:run() " << "Thread:" << t << "; MegaBin:" << i + k << std::endl;
+					std::cout << "Sender  :run() " << "Thread:" << t << "; MegaBin:" << i + k << std::endl;
 					//run(chl, commonSeed, binCapacity, height, logHeight, itemsInBin, bIdx, width, hashLengthInBytes, otMessages, choices);
 
 					////////////// Initialization //////////////////////

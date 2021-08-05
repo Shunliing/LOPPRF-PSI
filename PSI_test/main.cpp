@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
 	cmd.setDefault("ip", "localhost");
 	ip = cmd.get<string>("ip");
 
-	cmd.setDefault("thds", 1);
+	cmd.setDefault("thds", 4);
 	numThreads = cmd.get<u64>("thds");
 
 	bucket1 = bucket2 = 1 << 8;//(2^8=256)

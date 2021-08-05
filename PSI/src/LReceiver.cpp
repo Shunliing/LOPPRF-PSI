@@ -54,6 +54,7 @@ namespace scuPSI {
 			mNumMegaBins = balance.mNumBins / binStepSize + 1;
 		std::vector<std::vector<block>> megaBin(mNumMegaBins);
 		u64 iterMega = 0;
+		
 		for(u64 i = 0; i < balance.mNumBins; i += binStepSize)
 		{
 			u64 curBinStepSize = std::min(binStepSize, balance.mNumBins - i);
@@ -75,8 +76,8 @@ namespace scuPSI {
 		u64 numThreads(chls.size());
 		u64 sentData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 		u64 recvData[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-		u64* binPsi = new u64[numThreads];
-		u64 psiTotal;
+		u64 binPsi[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+		u64 psiTotal = 0;
 		
 		const bool isMultiThreaded = numThreads > 1;
 		
@@ -309,60 +310,69 @@ namespace scuPSI {
 		auto computingPsi = [&](u64 t)
 		{
 			///////////////// Receive hash outputs from sender and compute PSI ///////////////////
+		#if 1
 			auto& chl = chls[t];
-			u8* recvBuff;
-			chl.recv(recvBuff);
-			u64 startIdx = senderSize * 2 * t / numThreads;
-			u64 tmpEndIdx = senderSize * 2 * (t + 1) / numThreads;
-			u64 endIdx = std::min(tmpEndIdx, senderSize * 2);
+			u64 mOutputNums = 2 * senderSize / numThreads;
+			u8* recvBuff = new u8[mOutputNums * hashLengthInBytes];//recvBuff指向的空间过小
+			chl.recv(recvBuff, mOutputNums * hashLengthInBytes);
+
+			// u64 startIdx = senderSize * 2 * t / numThreads;
+			// u64 tmpEndIdx = senderSize * 2 * (t + 1) / numThreads;
+			// u64 endIdx = std::min(tmpEndIdx, senderSize * 2);
 			
-			std::cout << "测试R：是否开始计算PSI" << std::endl;
-			for (auto idx = 0; idx < endIdx; idx++) 
+			//std::cout << "测试R：是否开始计算PSI" << std::endl;
+			for (auto idx = 0; idx < mOutputNums; idx++) 
 			{
-				// todo:加入多线程
 				// 计算PSI
 				u64 mapIdx = *(u64*)(recvBuff + idx * hashLengthInBytes);//取前64位
 
-				// 查找1：对比前64位，可能存在多个匹配
+				// 查找1：对比前64位，有可能存在多个相同的值
 				auto found = allHashes.find(mapIdx);
 				if (found == allHashes.end()) continue;
 
-				// 查找2：对比所有位
+				// 查找2：对比所有位，在多个相同的值中查找
 				for (auto i = 0; i < found->second.size(); ++i) 
 				{
 					if (memcmp(&(found->second[i].first), recvBuff + idx * hashLengthInBytes, hashLengthInBytes) == 0) 
 					{
 						++binPsi[t];//todo:BinPSI修改为线程共享
+						std::cout << "binPSI: " << binPsi[t] << std::endl;
 						break;
 					}
 				}
 			}
+		#endif
+
+		#if 0
+			// 在megaBin中执行元素比较
+			auto& chl = chls[t];
+			u64 megaBinStartIdx = mNumMegaBins * t / numThreads;
+			u64 tempMegaBinEndIdx = (mNumMegaBins * (t + 1) / numThreads);
+			u64 megaBinEndIdx = std::min(tempMegaBinEndIdx, balance.mNumBins);
 			
-			//  在Bin中执行元素比较时会用到
-			// u64 megaBinStartIdx = balance.mNumBins * t / numThreads;
-			// u64 tempMegaBinEndIdx = (balance.mNumBins * (t + 1) / numThreads);
-			// u64 megaBinEndIdx = std::min(tempMegaBinEndIdx, balance.mNumBins);
-			//
-			// for (u64 i = megaBinStartIdx; i < megaBinEndIdx; i += stepSize)
-			// {
-			//	auto curStepSize = std::min(stepSize, megaBinEndIdx - i);
-			//	for (u64 k = 0; k < curStepSize; ++k)
-			//	{
-			//		/*if (psi == 100) {
-			//			std::cout << "Receiver intersection computed - correct!\n";
-			//		}
-			//		timer.setTimePoint("Receiver intersection computed");
-			//		std::cout << timer;*/
-			//	}
-			//
-			//	//////////////// Output communication /////////////////
-			//	/*u64 sentData = ch.getTotalDataSent();
-			//	u64 recvData = ch.getTotalDataRecv();
-			//	u64 totalData = sentData + recvData;*/
-			//	/*std::cout << "Receiver sent communication: " << sentData / std::pow(2.0, 20) << " MB\n";
-			//	std::cout << "Receiver received communication: " << recvData / std::pow(2.0, 20) << " MB\n";
-			//	std::cout << "Receiver total communication: " << totalData / std::pow(2.0, 20) << " MB\n";*/
-			//}
+			for (u64 i = megaBinStartIdx; i < megaBinEndIdx; i++)
+			{
+				auto curStepSize = std::min(stepSize, megaBinEndIdx - i);
+				for (u64 k = 0; k < curStepSize; ++k)
+				{
+					
+
+					/*if (psi == 100) {
+						std::cout << "Receiver intersection computed - correct!\n";
+					}
+					timer.setTimePoint("Receiver intersection computed");
+					std::cout << timer;*/
+				}
+				
+				//	//////////////// Output communication /////////////////
+				//	u64 sentData = ch.getTotalDataSent();
+				//	u64 recvData = ch.getTotalDataRecv();
+				//	u64 totalData = sentData + recvData;
+				//	std::cout << "Receiver sent communication: " << sentData / std::pow(2.0, 20) << " MB\n";
+				//	std::cout << "Receiver received communication: " << recvData / std::pow(2.0, 20) << " MB\n";
+				//	std::cout << "Receiver total communication: " << totalData / std::pow(2.0, 20) << " MB\n";
+			}
+		#endif
 		};
 		
 		//+------------ 多线程等待 --------------+
@@ -377,12 +387,13 @@ namespace scuPSI {
 			thrd.join();
 			
 		//++++++++++++++++++++++++++++++ 验证结果是否正确 +++++++++++++++++++++++++++++++++
-		for (u64 i = 0; i < balance.mNumBins; i++) {
+		for (u64 i = 0; i < numThreads; i++) {
 			psiTotal += binPsi[i];
 		}
 		if (psiTotal == 100) {
 			std::cout << "Receiver intersection computed - correct!\n";
 		}
+		std::cout << "Receiver intersection: " << psiTotal << std::endl;
 		timer.setTimePoint("Receiver intersection computed");
 		std::cout << timer;
 
@@ -396,18 +407,6 @@ namespace scuPSI {
 		std::cout << "Receiver received communication: " << totalRecvData / std::pow(2.0, 20) << " MB\n";
 		std::cout << "Receiver total communication: " << totalData / std::pow(2.0, 20) << " MB\n";
 		
-	}
-
-
-	void scuPSI::LReceiver::itemsToBins(span<Channel> chls, block& commonSeed, span<block> receiverSet, const u64& receiverSize, const u64& width, u64& hashLengthInBytes, std::vector<std::array<block, 2> >& otMessages)
-	{
-			
-	}
-
-
-	void scuPSI::LReceiver::run(Channel& ch, block& commonSeed, const u64& senderSize, const u64& receiverSize, const u64& height, const u64& logHeight, span<block> receiverSet, u64 bIdx, u64& numsInBin, const u64& width, u64& hashLengthInBytes, std::vector<std::array<block, 2> >& otMessages)
-	{
-	
 	}
 }
 

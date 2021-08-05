@@ -11,6 +11,7 @@
 #include <libOTe/TwoChooseOne/IknpOtExtSender.h>
 #include <libOTe/TwoChooseOne/IknpOtExtReceiver.h>
 #include <libOTe/Base/naor-pinkas.h>
+//#include "../tools/SimpleIndex.h"
 
 #define ON 1
 #define OFF 0
@@ -55,7 +56,9 @@ namespace scuPSI {
 	using TimeUnit = oc::Timer::timeUnit;
 	using Timer = oc::Timer;
 	using Log = oc::Log;
+	
 	using NaorPinkas = oc::NaorPinkas;
+	//using SimpleIndex = oc:SimpleIndex;
 
 	//自定义，参考SpOT
 	static const u64 recvNumDummies(1);
